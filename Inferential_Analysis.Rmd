@@ -45,7 +45,6 @@ library(psych)
 ## Read Datasets
 
 ```{r}
-setwd("/Users/lesliebernhardt/Library/CloudStorage/OneDrive-gematik.de/Masterarbeit/Datensätze")
 
 wev11 <- readxl::read_excel("DE_115498 gematik e-Rezept - Daten-1.xlsx", col_names = TRUE)
 wev22 <- readxl::read_excel("DE_115499 gematik e-Rezept_Wave2 - Finale Daten Final (1)-1.xlsx", col_names = TRUE)
