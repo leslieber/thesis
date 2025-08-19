@@ -1,0 +1,593 @@
+---
+title: "Population Study"
+output: pdf_document
+date: "2025-08-17"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+## Install Packages
+
+```{r}
+#install.packages("tidyverse")
+#install.packages("dplyr") 
+#install.packages("knitr")
+#install.packages("ggplot2") 
+#install.packages("tidyr")
+#install.packages("RColorBrewer")
+#install.packages("stringr")
+#install.packages("readxl")
+```
+
+## Import libraries
+
+```{r}
+library(tidyverse)
+library(dplyr)
+library(knitr)
+library(ggplot2)
+library(tidyr)
+library(RColorBrewer)  
+library(stringr)  
+library(readxl)
+```
+
+## Read datasets and make a copy
+
+```{r}
+setwd("/Users/lesliebernhardt/Library/CloudStorage/OneDrive-gematik.de/Masterarbeit/Datensätze")
+
+wev11 <- readxl::read_excel("DE_115498 gematik e-Rezept - Daten-1.xlsx", col_names = TRUE)
+wev22 <- readxl::read_excel("DE_115499 gematik e-Rezept_Wave2 - Finale Daten Final (1)-1.xlsx", col_names = TRUE)
+wev33 <- readxl::read_excel("DE_115500 gematik e-Rezept_Wave3 - Finale Daten Final-1.xlsx", col_names = TRUE)
+wev44 <- readxl::read_excel("DE_115501 gematik e-Rezept_Wave 4 - Finale Daten Final.xlsx", col_names = TRUE)
+wev55 <- readxl::read_excel("DE_132244 gematik e-Rezept_Wave 5 - Finale Daten Final.xlsx", col_names = TRUE)
+
+wev1 <- wev11
+wev2 <- wev22
+wev3 <- wev33
+wev4 <- wev44
+wev5 <- wev55
+
+# Missing Data
+wev1[wev1 == 8888888] <- NA
+wev2[wev2 == 8888888] <- NA
+wev3[wev3 == 8888888] <- NA
+wev4[wev4 == 8888888] <- NA
+wev5[wev5 == 8888888] <- NA
+
+datensaetze <- list("1" = wev1, "2" = wev2, "3" = wev3, "4" = wev4, "5" = wev5)
+
+wev123 <- read_excel("Auswertung_Bevölkerung_aktuell.xlsx", 
+                     sheet = "Demographie_Bevölkerung", 
+                     col_names = TRUE)
+
+```
+
+# Descriptive Statistics
+
+## Table Characteristics
+```{r}
+
+data_selected_wev <- wev123[, 1:11]
+
+data_selected_wev <- data_selected_wev %>%
+  mutate(across(.cols = 2:11, 
+                .fns = ~ ifelse(is.na(.x), "", 
+                                sub("\\.00$", "", 
+                                    format(round(as.numeric(.x), 2), 
+                                           nsmall = 2)))))
+table <- flextable(data_selected_wev) %>%
+  theme_booktabs() %>%
+  autofit()
+
+if (nrow(data_selected_wev) >= 46) {
+  table <- table %>%
+    border(i = c(8, 9, 45, 46), border.top = fp_border(width = 2)) %>%
+    border(part = "header", border.top = fp_border(width = 3)) %>%
+    bold(part = "header", bold = TRUE) %>%
+    bold(i = c(8, 45), j = c(1, 2, 3), bold = TRUE, part = "body")
+}
+print(table)
+
+```
+
+## Municipality Size
+
+```{r}
+
+for (i in 1:length(datensaetze)) {
+  df <- datensaetze[[i]]
+  haeufigkeit <- table(df$F1_5)
+  prozente <- round(prop.table(haeufigkeit) * 100, 2)
+  tabelle <- data.frame(
+    "Value" = names(haeufigkeit),
+    "Frequency" = as.vector(haeufigkeit),
+    "Percentage" = as.vector(prozente))
+  tabelle_transponiert <- as.data.frame(t(tabelle))
+  print(tabelle_transponiert)
+}
+
+```
+
+
+## Awareness of ePA 
+
+```{r}
+
+waves <- list(wev1, wev2, wev3, wev4, wev5)
+
+# Calculate the number of valid responses per wave
+total_counts <- sapply(waves, function(w) sum(!is.na(w$F2_2r3)))
+
+# Count the responses "1", "2", and "3" per wave
+count1 <- sapply(waves, function(w) sum(w$F2_2r3 == 1, na.rm = TRUE))
+count2 <- sapply(waves, function(w) sum(w$F2_2r3 == 2, na.rm = TRUE))
+count3 <- sapply(waves, function(w) sum(w$F2_2r3 == 3, na.rm = TRUE))
+
+# Calculate the percentages for each response option per wave
+percent1 <- (count1 / total_counts) * 100
+percent2 <- (count2 / total_counts) * 100
+percent3 <- (count3 / total_counts) * 100
+
+# Combine the results into a dataframe
+result_df <- data.frame(
+  Total    = total_counts,
+  Count1   = count1,
+  Percent1 = sprintf("%.2f", percent1),
+  Count2   = count2,
+  Percent2 = sprintf("%.2f", percent2),
+  Count3   = count3,
+  Percent3 = sprintf("%.2f", percent3)
+)
+print(result_df)
+
+# Choose color
+color_use <- brewer.pal(9, "YlGnBu")[8]
+
+# Prepare data
+wave_numbers <- 1:5 
+percent1_rounded <- round(percent1, 2)  
+
+data <- data.frame(
+  Wave = wave_numbers,
+  Percent = percent1,                             
+  Percent_label = sprintf("%.2f", percent1)        
+)
+
+# Create graphic
+ggplot(data, aes(x = Wave, y = Percent)) +
+  geom_line(color = color_use, size = 1.3) +  
+  geom_point(color = color_use, size = 3) + 
+  geom_text(aes(label = paste0(Percent_label, "%")), vjust = -0.5, size = 4) + 
+  labs(
+    title = "Trend of ePA Awareness",
+    x = "Wave",
+    y = "Percentage"
+  ) +
+  scale_x_continuous(breaks = wave_numbers) +  
+  scale_y_continuous(limits = c(0, 100), breaks = seq(0, 100, 25)) +  
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 16, hjust = 0.5, face = "bold"), 
+    axis.title = element_text(size = 14),  
+    axis.text = element_text(size = 14, face = "bold"),  
+    panel.border = element_rect(colour = "black", fill = NA, size = 1)
+  )
+
+```
+
+## Current Status of ePA Usage
+
+```{r}
+calc_freq_pct <- function(df, col) {
+  freq <- table(df[[col]])
+  data.frame(
+    Absolute = as.integer(freq),
+    Percentage = round(100 * prop.table(freq), 2),
+    row.names = names(freq)
+  )
+}
+
+wellen <- list(wev1, wev2, wev3, wev4, wev5)
+res <- lapply(wellen, calc_freq_pct, col = "F2_10")
+lapply(res, print)
+
+```
+
+# Agreement to Acceptance Statement
+
+```{r}
+
+fragen <- "F2_8r4"
+fragen_labels <- "I welcome the idea that everyone should receive an ePA and that you have to actively object (opt-out regulation)."
+
+datensaetze2 <- list("1" = wev1, "2" = wev2, "3" = wev3, "4" = wev4, "5" = wev5)
+
+gesamt_df <- data.frame()
+
+# Prepare data 
+for (welle in names(datensaetze2)) {
+  df <- datensaetze2[[welle]]
+  
+  temp_df <- df %>%
+    select(all_of(fragen)) %>%
+    rename(Antwort = all_of(fragen)) %>%
+    filter(!is.na(Antwort)) %>%
+    mutate(Antwort = as.numeric(as.character(Antwort))) %>% 
+    group_by(Antwort) %>%
+    summarise(Häufigkeit = n(), .groups = "drop") %>%
+    mutate(Prozent_roh = (Häufigkeit / sum(Häufigkeit)) * 100)
+  
+  temp_df <- temp_df %>%
+    arrange(Antwort) %>%
+    mutate(Prozent = if_else(row_number() == n(),
+                             100 - sum(round(Prozent_roh)[1:(n()-1)]),
+                             round(Prozent_roh))) %>%
+    mutate(Frage = fragen_labels,
+           Welle = welle)
+  
+  gesamt_df <- bind_rows(gesamt_df, temp_df)
+}
+
+antworten_labels <- c(
+  "1 - Fully agree", "2", "3", "4", "5", "6", "7 - Disagree"
+)
+
+farben <- c(
+  "1 - Fully agree" = "#4ca96b",
+  "2" = "#66c2a4",
+  "3" = "#c8e6c9",
+  "4" = "#f0f0f0",
+  "5" = "#FFD1C1",
+  "6" = "#ff9e81",
+  "7 - Disagree" = "#ff6f61"
+)
+
+# Convert responses to a factor with labels
+gesamt_df$Antwort <- as.numeric(as.character(gesamt_df$Antwort))
+gesamt_df$Antwort <- factor(gesamt_df$Antwort, levels = 1:7, labels = antworten_labels)
+gesamt_df$Frage <- factor(gesamt_df$Frage, levels = fragen_labels)
+
+# Create plot
+ggplot(gesamt_df, aes(x = Welle, y = Prozent, fill = Antwort)) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = ifelse(Prozent > 0, paste0(Prozent, "%"), "")),
+            position = position_stack(vjust = 0.5),
+            size = 4, color = "black") +
+  labs(title = "Acceptance of ePA and Opt-out Regulation",
+       y = "Percentage",
+       x = "Wave",
+       fill = NULL) +
+  scale_y_continuous(breaks = seq(0, 100, by = 25)) +  
+  scale_fill_manual(values = farben) +  
+  theme_minimal() +
+  theme(
+    legend.position = "right",
+    plot.title = element_text(size = 16, hjust = 0.5, face = "bold"),  
+    axis.title = element_text(size = 14),  
+    axis.text = element_text(size = 14, face = "bold"),  
+    axis.text.x = element_text(size = 14),  
+    legend.text = element_text(size = 14), 
+    legend.title = element_text(size = 16)  
+  ) 
+
+```
+
+
+## Concerns 
+
+```{r}
+
+fragen <- paste0("F2_12r", 1:8)
+
+gesamt_df <- data.frame()
+
+for (welle in names(datensaetze)) {
+  df <- datensaetze[[welle]]
+  haeufigkeiten <- colSums(df[, fragen], na.rm = TRUE)
+  gesamt_n <- sum(haeufigkeiten)  
+  prozente <- round((haeufigkeiten / gesamt_n) * 100)
+  temp_df <- data.frame(Antwort = fragen, Häufigkeit = haeufigkeiten, Prozent = prozente, Welle = welle)
+  gesamt_df <- rbind(gesamt_df, temp_df)
+}
+
+antwort_labels <- c(
+  "I don't know enough about these possibilities yet.",
+  "The setup or installation seems too complicated to me.",
+  "I see issues with data protection or fear that my data may be accessed abusively.",
+  "I fear that the documents could be lost or manipulated.",
+  "I have heard about the barriers to creating such digital documents.",
+  "I have no interest in this.",
+  "My health insurance company should first inform me and suggest corresponding options.",
+  "My treating doctors or pharmacies should first inform me and suggest corresponding options."
+)
+
+gesamt_df$Antwort <- factor(gesamt_df$Antwort, levels = fragen, labels = str_wrap(antwort_labels, width = 40))
+
+
+#Create plot
+ggplot(gesamt_df, aes(x = Antwort, y = Prozent, fill = factor(Welle, levels = rev(unique(Welle))))) +
+  geom_bar(stat = "identity", position = "dodge") +
+     geom_text(
+    aes(label = paste0(Prozent, "%")),  
+    position = position_dodge(width = 0.9),  
+    hjust = -0.1,  
+    size = 4       
+  ) +
+  coord_flip() +
+  labs(title = "Reservations and Concerns", 
+       y = "Percentage", 
+       x = NULL) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 18, hjust = 0.5, face = "bold"),  
+    axis.title = element_text(size = 14),  
+    axis.text = element_text(size = 14, face = "bold"),  
+    axis.text.x = element_text(size = 14),  
+    legend.text = element_text(size = 14),  
+    legend.title = element_text(size = 16)  
+  ) + 
+  scale_fill_brewer(palette = "Blues", name = "Wave") +
+  scale_y_continuous(limits = c(0, 100), expand = c(0, 0)) +  
+  guides(fill = guide_legend(reverse = TRUE))  
+
+ggsave("Concerns1.jpg", width = 10, height = 8)
+```
+
+## Recommendation of ePA
+
+```{r}
+
+# Filter data, only those who have used the ePA already
+filtered_wev3 <- wev3[wev3$F2_10 == 1, ]
+filtered_wev4 <- wev4[wev4$F2_10 == 1, ]
+filtered_wev5 <- wev5[wev5$F2_10 == 1, ]
+
+# Prepare data 
+datensaetze <- list("3" = filtered_wev3, "4" = filtered_wev4, "5" = filtered_wev5)
+
+mean_wev3 <- mean(filtered_wev3$F2_18, na.rm = TRUE)
+mean_wev4 <- mean(filtered_wev4$F2_18, na.rm = TRUE)
+mean_wev5 <- mean(filtered_wev5$F2_18, na.rm = TRUE)
+
+wellen <- c(3, 4, 5)
+mittelwerte <- c(mean_wev3, mean_wev4, mean_wev5)
+data <- data.frame(Welle = wellen, Mittelwert = mittelwerte)
+
+# Choose colors
+color_use <- brewer.pal(9, "YlGnBu")[8]
+
+# Create plot
+ggplot(data, aes(x = Welle, y = Mittelwert)) +
+  geom_line(color = color_use, size = 1.3) +  
+  geom_point(color = color_use, size = 3) +  
+  geom_text(aes(label = sprintf("%.2f", mittelwerte)), vjust = -1, size = 4) + 
+  labs(
+    title = "Mean of Likelihood of Recommendation",
+    x = "Wave",
+    y = "NPS Scale"
+  ) +
+  scale_x_continuous(limits = c(3, 5), breaks = seq(3, 5, 1)) +  
+  scale_y_continuous(limits = c(1, 10), breaks = seq(1, 10, 1)) +  
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 16, hjust = 0.5, face = "bold"),  
+    axis.title = element_text(size = 14), 
+    axis.text = element_text(size = 14, face = "bold"),
+    panel.border = element_rect(colour = "black", fill = NA, size = 1) 
+  )
+
+```
+
+## Plans of Using the ePA Based on Current Level of Information
+
+```{r}
+
+frage <- "F2_7b"
+
+gesamt_df <- data.frame()
+
+antworten_numeric <- c(1, 2, 3, 4, 5)
+antworten_text <- c(
+  "Yes, I would like to use the ePA now.",
+  "Yes, I would like to use the ePA in the future.",
+  "No, I do not want to use the ePA, but I do not object.",
+  "No, I do not want to use the ePA and actively object.",
+  "Don't know/No answer."
+)
+
+for (welle in names(datensaetze)) {
+  df <- datensaetze[[welle]]
+  haeufigkeiten <- table(df[[frage]], useNA = "no")  
+  gesamt_anzahl <- sum(haeufigkeiten)
+  prozentwerte <- round((haeufigkeiten / gesamt_anzahl) * 100)  
+  
+  # Create data frame
+  temp_df <- data.frame(
+    Antwort = factor(antworten_numeric, labels = antworten_text),
+    Prozent = as.numeric(prozentwerte[as.character(antworten_numeric)]),  
+    Wave = welle
+  )
+  
+  gesamt_df <- rbind(gesamt_df, temp_df)
+}
+# Change order
+gesamt_df <- gesamt_df %>%
+  mutate(
+    Wave = factor(Wave, levels = rev(names(datensaetze))),  
+    Antwort = factor(Antwort, levels = antworten_text)  
+  )
+
+gesamt_df <- na.omit(gesamt_df)
+
+# Create plot
+plot <- ggplot(gesamt_df, aes(x = Antwort, y = Prozent, fill = Wave)) +
+  geom_bar(stat = "identity", position = "dodge") +  
+  geom_text(
+    aes(label = paste0(Prozent, "%")),  
+    position = position_dodge(width = 0.9),  
+    hjust = -0.1,  
+    size = 5       
+  ) +
+  coord_flip() +  
+  labs(title = "Plans of Using the ePA", 
+       y = "Percentage", 
+       x = NULL) +
+  theme_minimal() +
+  scale_fill_brewer(palette = "Blues") +  
+  scale_y_continuous(limits = c(0, 100), expand = c(0, 0)) +  
+  theme(
+    plot.title = element_text(size = 18, hjust = 0.5, face = "bold"), 
+    axis.title = element_text(size = 14),  
+    axis.text = element_text(size = 14, face = "bold"),  
+    axis.text.x = element_text(size = 14),  
+    legend.text = element_text(size = 14),  
+    legend.title = element_text(size = 16)  
+  ) +
+  scale_x_discrete(labels = function(x) str_wrap(x, width = 25))+ 
+  guides(fill = guide_legend(reverse = TRUE))  #
+print(plot)
+
+```
+## Reasons Against the Use of the ePA
+
+```{r}
+
+antworten <- c(
+"I am not aware of the ePA as a service provided by my health insurance.",
+  "I have concerns.",
+  "I have no interest in digital solutions.",
+  "I lack information on how to obtain an ePA.",
+  "I feel insecure about using digital tools like apps.",
+  "My health condition does not require it.",
+  "Other"
+)
+
+fragen <- paste0("F2_11r", 1:7)
+
+
+# Calculate percentages per wave and answer
+percent_df <- bind_rows(
+  lapply(names(datensaetze), function(welle) {
+    df     <- datensaetze[[welle]]
+    counts <- colSums(df[, fragen, drop = FALSE], na.rm = TRUE)
+    total  <- sum(counts)
+    data.frame(
+      Welle   = welle,
+      Antwort = fragen,
+      Prozent = round(counts / total * 100),
+      stringsAsFactors = FALSE
+    )
+  })
+) %>%
+  mutate(
+    # Reverse the levels of Welle to change the bar stacking order
+    Welle   = factor(Welle, levels = rev(names(datensaetze))),
+    Antwort = factor(Antwort, levels = fragen, labels = antworten)  
+  )
+
+# Create plot
+ggplot(percent_df, aes(x = Antwort, y = Prozent, fill = Welle)) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.9)) +  
+  geom_text(
+    aes(label = paste0(Prozent, "%")),  
+    position = position_dodge(width = 0.9),  
+    hjust = -0.1,  
+    size = 4       
+  ) +
+  coord_flip() +  
+  scale_fill_brewer(palette = "Blues", name = "Wave") +  # Color palette
+  labs(
+    title = "Reasons Against the Use of the ePA",
+    y     = "Percentage",
+    x     = NULL
+  ) +
+  theme_minimal() +
+ theme(
+    plot.title = element_text(size = 18, hjust = 0.5, face = "bold"),  
+    axis.title = element_text(size = 14),  
+    axis.text = element_text(size = 14, face = "bold"),  
+    axis.text.x = element_text(size = 14),  
+    legend.text = element_text(size = 14),  
+    legend.title = element_text(size = 16) 
+  ) +
+  scale_x_discrete(labels = function(x) str_wrap(x, width = 25)) +  
+  scale_y_continuous(limits = c(0, 100), expand = c(0, 0)) +  
+  guides(fill = guide_legend(reverse = TRUE))  
+
+```
+## Trend of Agreement with ePA-Related Statements
+
+```{r}
+fragen <- c("F2_14r1", "F2_14r2", "F2_14r4", "F2_8r4")
+
+mittelwert_df <- data.frame()
+
+
+for (welle in names(datensaetze)) {
+  df <- datensaetze[[welle]]
+  temp_df <- df %>%
+    select(all_of(fragen)) %>%
+    pivot_longer(cols = everything(), names_to = "Frage", values_to = "Antwort") %>%
+    filter(!is.na(Antwort)) %>%  
+    group_by(Frage) %>%
+    summarise(
+      Mittelwert = mean(Antwort, na.rm = TRUE),  
+      Zustimmung_Prozent = sum(Antwort == 1, na.rm = TRUE) / n() * 100,  
+      .groups = "drop"
+    ) %>%
+    mutate(Welle = welle)
+  
+  mittelwert_df <- bind_rows(mittelwert_df, temp_df)
+}
+
+
+fragen_labels <- c(
+  "The ePA will improve\nmy medical care.", 
+  "The use of ePAs will\nhelp the medical staff.",  
+  "I want my doctors to\nuse the ePA in the future.",  
+  "I welcome the idea that\neveryone should receive an ePA\nand that one must actively object\n(opt-out regulation)."
+)
+
+# Choose colors
+farben <- RColorBrewer::brewer.pal(n = 9, name = "Blues")
+
+# Mapping of variables to labels 
+mittelwert_df$Frage <- factor(mittelwert_df$Frage, levels = fragen, labels = fragen_labels)
+
+# Create plot
+ggplot(mittelwert_df, aes(x = Welle, y = Mittelwert, group = Frage, color = Frage)) +
+  geom_line(size = 1.3) +  
+  geom_point(size = 3) +  
+  geom_text_repel(
+  aes(label = round(Mittelwert, 2)),  
+  color = "black",  
+  vjust = -0.8,  
+  size = 4,        
+  nudge_y = 0.1
+)+
+  labs(title = "Agreement with ePA Statements ",
+       y = "Likert Scale",
+       x = "Wave") +  
+  theme_minimal() +
+  theme(legend.position = "bottom", 
+    legend.title = element_blank(),
+    plot.title = element_text(size = 18, hjust = 0.5, face = "bold"),  
+    axis.title = element_text(size = 14),  
+    axis.text = element_text(size = 14, face = "bold"),  
+    axis.text.x = element_text(size = 14),  
+    panel.border = element_rect(colour = "black", fill = NA, size = 1),
+    legend.text = element_text(size = 16))+  
+  scale_colour_manual(values = farben[c(3, 5, 8, 9)]) + 
+  scale_y_continuous(
+    limits = c(1, 7),  
+    breaks = seq(1, 7, by = 1) 
+  )
+
+```
+
+
