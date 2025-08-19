@@ -1,0 +1,576 @@
+---
+title: "Inferential Analysis"
+output: html_document
+date: "2025-08-19"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+## Install Packages
+
+```{r}
+#install.packages("tidyverse")
+#install.packages("knitr")
+#install.packages("tidyr")
+#install.packages("RColorBrewer") 
+#install.packages("stringr")  
+#install.packages("readxl")
+#install.packages("DescTools")
+#install.packages("PMCMRplus")
+#install.packages("car")
+#install.packages("rstatix")
+#install.packages("psych")
+```
+
+
+## Import libraries
+
+```{r}
+library(tidyverse)
+library(knitr)
+library(tidyr)
+library(RColorBrewer)  
+library(stringr)  
+library(readxl)
+library(DescTools)
+library(PMCMRplus)
+library(car)
+library(rstatix)
+library(psych)
+```
+
+## Read Datasets
+
+```{r}
+setwd("/Users/lesliebernhardt/Library/CloudStorage/OneDrive-gematik.de/Masterarbeit/Datensätze")
+
+wev11 <- readxl::read_excel("DE_115498 gematik e-Rezept - Daten-1.xlsx", col_names = TRUE)
+wev22 <- readxl::read_excel("DE_115499 gematik e-Rezept_Wave2 - Finale Daten Final (1)-1.xlsx", col_names = TRUE)
+wev33 <- readxl::read_excel("DE_115500 gematik e-Rezept_Wave3 - Finale Daten Final-1.xlsx", col_names = TRUE)
+wev44 <- readxl::read_excel("DE_115501 gematik e-Rezept_Wave 4 - Finale Daten Final.xlsx", col_names = TRUE)
+wev55 <- readxl::read_excel("DE_132244 gematik e-Rezept_Wave 5 - Finale Daten Final.xlsx", col_names = TRUE)
+
+wev1 <- wev11
+wev2 <- wev22
+wev3 <- wev33
+wev4 <- wev44
+wev5 <- wev55
+
+# Missing Data
+wev1[wev1 == 8888888] <- NA
+wev2[wev2 == 8888888] <- NA
+wev3[wev3 == 8888888] <- NA
+wev4[wev4 == 8888888] <- NA
+wev5[wev5 == 8888888] <- NA
+
+# List of datasets
+datensaetze <- list("1"= wev1, "2" = wev2, "3" = wev3, "4" = wev4, "5" = wev5)
+```
+## Descriptive Statistics of Acceptance Per Wave
+
+```{r}
+# Combine the F2_8r4 column from all waves
+combined_data <- do.call(rbind, lapply(names(datensaetze), function(welle) {
+  daten <- datensaetze[[welle]]
+  data.frame(F2_8r4 = daten$F2_8r4, Welle = welle)
+}))
+
+deskriptiv <- combined_data %>%
+  group_by(Welle) %>%
+  summarise(
+    n = n(),
+    M = mean(F2_8r4, na.rm = TRUE),
+    SD = sd(F2_8r4, na.rm = TRUE),
+    Median = median(F2_8r4, na.rm = TRUE),
+    Min = min(F2_8r4, na.rm = TRUE),
+    Max = max(F2_8r4, na.rm = TRUE)
+  )
+print(deskriptiv)
+```
+
+## ANOVA Acceptance / Waves
+
+```{r}
+
+# Combine the F2_8r4 column from all waves
+combined_data <- do.call(rbind, lapply(names(datensaetze), function(welle) {
+  daten <- datensaetze[[welle]]
+  data.frame(F2_8r4 = daten$F2_8r4, Welle = welle)
+}))
+
+# Levene's test for homogeneity of variances within waves (between groups)
+levene_test <- leveneTest(F2_8r4 ~ as.factor(Welle), data = combined_data)
+print(levene_test)
+
+# Perform Welch's ANOVA
+welch_result <- oneway.test(F2_8r4 ~ as.factor(Welle), data = combined_data, var.equal = FALSE)
+print(welch_result)
+
+# Perform Games-Howell test
+cat("\nGames-Howell Test:\n")
+games_howell_result <- gamesHowellTest(F2_8r4 ~ as.factor(Welle), data = combined_data)
+print(games_howell_result)
+
+# Calculate Cohen's d for all pairwise comparisons between waves
+cat("\nCohen's d for all pairwise comparisons between waves:\n")
+cohens_d_result <- combined_data %>%
+  cohens_d(F2_8r4 ~ Welle, var.equal = FALSE, paired = FALSE)
+print(cohens_d_result)
+
+```
+## Desctiptive Statistics of Acceptance / Age Group
+
+```{r}
+
+# Create new categories
+combined_data <- bind_rows(lapply(names(datensaetze), function(welle) {
+  daten <- datensaetze[[welle]]
+  daten$Wave <- welle
+  daten$age_group4 <- ifelse(daten$F1_1 %in% c(1, 2), "18-29",
+                      ifelse(daten$F1_1 %in% c(3, 4), "30-49",
+                      ifelse(daten$F1_1 %in% c(5, 6), "50-69",
+                      ifelse(daten$F1_1 %in% c(7, 8), "70+", NA))))
+  daten
+}))
+
+# Descriptive Statistics
+combined_data %>%
+  group_by(Wave, age_group4) %>%
+  summarise(
+    M = mean(F2_8r4, na.rm = TRUE),
+    SD = sd(F2_8r4, na.rm = TRUE),
+    n = sum(!is.na(F2_8r4)),
+    .groups = "drop"
+  ) %>%
+  knitr::kable(digits = 2, caption = "Descriptive Statistics for Acceptance by Wave and Age Group")
+
+```
+
+## ANOVA Age Group / Acceptance
+
+```{r}
+
+# Loop through the datasets in the list
+for (welle in names(datensaetze)) {
+  cat("Welch-ANOVA for wave", welle, "\n")
+  
+  # Access the dataset for the respective wave
+  daten <- datensaetze[[welle]]
+ 
+  daten$age_group4 <- ifelse(daten$F1_1 %in% c(1, 2), "18-29",
+                      ifelse(daten$F1_1 %in% c(3, 4), "30-49",
+                      ifelse(daten$F1_1 %in% c(5, 6), "50-69",
+                      ifelse(daten$F1_1 %in% c(7, 8), "70+",NA))))
+  
+  # Levene's test for homogeneity of variances
+  levene_test <- leveneTest(F2_8r4 ~ as.factor(age_group4), data = daten)
+  print(levene_test)
+  
+  
+  # Perform Classical-ANOVA
+  cat("\nClassical Anova:\n")
+  anova_result <- aov(F2_8r4 ~ as.factor(age_group4), data = daten)
+  print(summary(anova_result))
+  cat("\nTurkey HSD:\n")
+  tukey_result <- TukeyHSD(anova_result)
+  print(tukey_result)
+  
+  # Perform Welch-ANOVA
+  welch_result <- oneway.test(F2_8r4 ~ as.factor(age_group4), data = daten, var.equal = FALSE)
+  print(welch_result)
+  
+  p_value <- welch_result$p.value
+
+  
+  if (p_value < 0.05) {
+    cat("\nThe Welch-ANOVA is significant (p =", p_value, ").\n")
+    cat("Games-Howell test will be performed:\n")
+    
+    # Perform Games-Howell test
+    cat("\nGames-Howell test:\n")
+    games_howell_result <- gamesHowellTest(F2_8r4 ~ as.factor(age_group4), data = daten)
+    print(games_howell_result)
+ 
+  } else {
+    cat("\nThe Welch-ANOVA is not significant (p =", p_value, ").\n")
+    cat("Games-Howell test will be skipped.\n")
+  }
+  
+  cat("\n----------------------------------------\n")
+}
+
+```
+
+## Descriptive Statistics of Education / Acceptance
+
+```{r}
+
+combined_data <- bind_rows(lapply(names(datensaetze), function(welle) {
+  daten <- datensaetze[[welle]]
+  daten$Wave <- welle
+  daten$EduRec <- as.character(daten$EduRec)
+  daten
+}))
+
+education_levels <- c("1", "2", "3")
+
+
+desc_stats_edu <- combined_data %>%
+  group_by(EduRec, Wave) %>%
+  summarise(
+    M = round(mean(F2_8r4, na.rm = TRUE), 2),
+    SD = round(sd(F2_8r4, na.rm = TRUE), 2),
+    n = sum(!is.na(F2_8r4)),
+    .groups = "drop"
+  ) %>%
+  arrange(factor(EduRec, levels = education_levels), Wave)
+
+print(desc_stats_edu)
+
+for (welle in names(datensaetze)) {
+  daten <- datensaetze[[welle]]
+  group_stats <- aggregate(F2_8r4 ~ as.factor(EduRec), data = daten, 
+                           FUN = function(x) c(mean = mean(x), var = var(x), n = length(x)))
+  group_stats <- do.call(data.frame, group_stats)
+  colnames(group_stats) <- c("EduRec", "Mean", "Var", "N")
+
+  cat("\nDescriptive statistics (means, variances, sizes):\n")
+  print(group_stats)
+  
+  cat("\nPairwise mean differences:\n")
+  pairwise_comparisons <- expand.grid(
+    group1 = group_stats$EduRec, 
+    group2 = group_stats$EduRec
+  )
+
+  pairwise_comparisons <- subset(pairwise_comparisons, group1 != group2)  
+  
+  pairwise_comparisons$mean1 <- group_stats$Mean[match(pairwise_comparisons$group1, group_stats$EduRec)]
+  pairwise_comparisons$mean2 <- group_stats$Mean[match(pairwise_comparisons$group2, group_stats$EduRec)]
+  pairwise_comparisons$var1 <- group_stats$Var[match(pairwise_comparisons$group1, group_stats$EduRec)]
+  pairwise_comparisons$var2 <- group_stats$Var[match(pairwise_comparisons$group2, group_stats$EduRec)]
+  pairwise_comparisons$n1 <- group_stats$N[match(pairwise_comparisons$group1, group_stats$EduRec)]
+  pairwise_comparisons$n2 <- group_stats$N[match(pairwise_comparisons$group2, group_stats$EduRec)]
+
+  pairwise_comparisons$mean_diff <- pairwise_comparisons$mean1 - pairwise_comparisons$mean2
+  
+  # SD
+  pairwise_comparisons$SE <- sqrt(pairwise_comparisons$var1 / pairwise_comparisons$n1 +
+                                  pairwise_comparisons$var2 / pairwise_comparisons$n2)
+  
+  # Degrees of freedom
+  pairwise_comparisons$df <- (pairwise_comparisons$SE^4) /
+    ((pairwise_comparisons$var1^2 / (pairwise_comparisons$n1^2 * (pairwise_comparisons$n1 - 1))) +
+     (pairwise_comparisons$var2^2 / (pairwise_comparisons$n2^2 * (pairwise_comparisons$n2 - 1))))
+  
+  # CI (95%)
+  alpha <- 0.05
+  pairwise_comparisons$lower_CI <- pairwise_comparisons$mean_diff - qt(1 - alpha / 2, df = pairwise_comparisons$df) * pairwise_comparisons$SE
+  pairwise_comparisons$upper_CI <- pairwise_comparisons$mean_diff + qt(1 - alpha / 2, df = pairwise_comparisons$df) * pairwise_comparisons$SE
+  
+  cat("\nPairwise comparisons with confidence intervals:\n")
+  print(pairwise_comparisons)
+
+}
+
+```
+
+## ANOVA Education / Acceptance
+
+```{r}
+
+for (welle in names(datensaetze)) {
+  cat("Welch-ANOVA for wave", welle, "\n")
+  
+  # Access the dataset for the respective wave
+  daten <- datensaetze[[welle]]
+  
+  # Calculate group means
+  cat("\nDescriptive statistics (means):\n")
+  mittelwerte <- aggregate(F2_8r4 ~ as.factor(EduRec), data = daten, FUN = mean)
+  print(mittelwerte)
+  
+  # Levene's test for homogeneity of variances
+  levene_test <- leveneTest(F2_8r4 ~ as.factor(EduRec), data = daten)
+  print(levene_test)
+  
+  # Perform Welch-ANOVA, when homogenity is not present
+  welch_result <- oneway.test(F2_8r4 ~ as.factor(EduRec), data = daten, var.equal = FALSE)
+  print(welch_result)
+  
+  # Perform Classical-ANOVA
+  cat("\nClassical Anova:\n")
+  anova_result <- aov(F2_8r4 ~ as.factor(EduRec), data = daten)
+  print(summary(anova_result))
+  cat("\nTurkey HSD:\n")
+  tukey_result <- TukeyHSD(anova_result)
+  print(tukey_result)
+  
+  p_value <- welch_result$p.value
+  
+  cohen_results_anova <- daten %>%
+    cohens_d(F2_8r4 ~ EduRec, var.equal = TRUE)
+  print(cohen_results_anova)
+  
+  if (p_value < 0.05) {
+    cat("\nThe Welch-ANOVA is significant (p =", p_value, ").\n")
+    cat("Games-Howell test will be performed:\n")
+    
+    # Perform Games-Howell test
+    cat("\nGames-Howell test:\n")
+    games_howell_result <- gamesHowellTest(F2_8r4 ~ as.factor(EduRec), data = daten)
+    print(games_howell_result)
+    
+    # Output mean differences between groups
+    cat("\nMean differences between groups:\n")
+    mean_differences <- games_howell_result$diff
+    print(mean_differences)
+    
+    # Cohen's d Effektstärke
+    cat("\nCohen's d für alle Paarvergleiche (rstatix):\n")
+    cohen_results <- daten %>%
+     cohens_d(F2_8r4 ~ EduRec, var.equal = FALSE)
+    print(cohen_results)
+    
+  } else {
+    cat("\nThe Welch-ANOVA is not significant (p =", p_value, ").\n")
+    cat("Games-Howell test will be skipped.\n")
+  }
+  
+  cat("\n----------------------------------------\n")
+}
+```
+
+## Descriptive Statistics Municipality Size / Acceptance
+
+```{r}
+
+# Create new categories
+combined_data <- bind_rows(lapply(names(datensaetze), function(welle) {
+  daten <- datensaetze[[welle]]
+  daten$Wave <- welle
+  daten$gemeindegruppe <- ifelse(daten$F1_4 %in% c(1, 2, 3), "Kleine Gemeinden",
+                          ifelse(daten$F1_4 %in% c(4, 5), "Mittlere Gemeinden",
+                          ifelse(daten$F1_4 %in% c(6, 7), "Große Städte", NA)))
+  daten
+}))
+
+gemeinde_levels <- c("Kleine Gemeinden", "Mittlere Gemeinden", "Große Städte")
+
+desc_stats_pop <- combined_data %>%
+  group_by(gemeindegruppe, Wave) %>%
+  summarise(
+    M = round(mean(F2_8r4, na.rm = TRUE), 2),
+    SD = round(sd(F2_8r4, na.rm = TRUE), 2),
+    n = sum(!is.na(F2_8r4)),
+    .groups = "drop"
+  ) %>%
+  arrange(factor(gemeindegruppe, levels = gemeinde_levels), Wave)
+print(desc_stats_pop)
+
+```
+
+## ANOVA Municipality Size / Acceptance
+
+```{r}
+
+# Loop through the datasets in the list
+for (welle in names(datensaetze)) {
+  cat("Welch-ANOVA for wave", welle, "\n")
+  
+  # Access the dataset for the respective wave
+  daten <- datensaetze[[welle]]
+  
+  # Aggregation
+  daten$gemeindegruppe <- ifelse(daten$F1_4 %in% c(1, 2, 3), "Kleine Gemeinden",
+                          ifelse(daten$F1_4 %in% c(4, 5), "Mittlere Gemeinden",
+                          ifelse(daten$F1_4 %in% c(6, 7), "Große Städte", NA)))
+  
+  # Levene's test for homogeneity of variances
+  levene_test <- leveneTest(F2_8r4 ~ as.factor(gemeindegruppe), data = daten)
+  print(levene_test)
+  
+  # Perform Welch-ANOVA
+  welch_result <- oneway.test(F2_8r4 ~ as.factor(gemeindegruppe), data = daten, var.equal = FALSE)
+  print(welch_result)
+  
+  # Perform Classical-ANOVA
+  cat("\nClassical Anova:\n")
+  anova_result <- aov(F2_8r4 ~ as.factor(gemeindegruppe), data = daten)
+  print(summary(anova_result))
+  cat("\nTurkey HSD:\n")
+  tukey_result <- TukeyHSD(anova_result)
+  print(tukey_result)
+  
+  p_value <- welch_result$p.value
+  
+  if (p_value < 0.05) {
+    cat("\nThe Welch-ANOVA is significant (p =", p_value, ").\n")
+    cat("Games-Howell test will be performed:\n")
+    
+    # Perform Games-Howell test
+    cat("\nGames-Howell test:\n")
+    games_howell_result <- gamesHowellTest(F2_8r4 ~ as.factor(gemeindegruppe), data = daten)
+    print(games_howell_result)
+ 
+  } else {
+    cat("\nThe Welch-ANOVA is not significant (p =", p_value, ").\n")
+    cat("Games-Howell test will be skipped.\n")
+  }
+  
+  cat("\n----------------------------------------\n")
+}
+
+```
+## Descriptive Statistics Gender / Acceptance
+
+```{r}
+
+# Combine data
+combined_data <- bind_rows(lapply(names(datensaetze), function(welle) {
+  daten <- datensaetze[[welle]]
+  daten$Wave <- welle
+  daten$F1_2 <- as.character(daten$F1_2)
+  daten
+}))
+
+# Order
+gender_levels <- c("1", "2", "3") 
+
+
+desc_stats_gender <- combined_data %>%
+  group_by(F1_2, Wave) %>%
+  summarise(
+    M = round(mean(F2_8r4, na.rm = TRUE), 2),
+    SD = round(sd(F2_8r4, na.rm = TRUE), 2),
+    n = sum(!is.na(F2_8r4)),
+    .groups = "drop"
+  ) %>%
+  arrange(factor(F1_2, levels = gender_levels), Wave)
+
+print(desc_stats_gender)
+
+```
+
+## ANOVA Gender / Acceptance
+
+```{r}
+
+# Loop through the datasets in the list
+for (welle in names(datensaetze)) {
+  cat("t-Test (nur erste zwei Gruppen) für Welle", welle, "\n")
+  daten <- datensaetze[[welle]]
+
+  erste_zwei_gruppen <- sort(unique(na.omit(daten$F1_2)))[1:2]
+  daten_sub <- daten[daten$F1_2 %in% erste_zwei_gruppen, ]
+  
+  # Levene's Test 
+  levene_test <- car::leveneTest(F2_8r4 ~ as.factor(F1_2), data = daten_sub)
+  print(levene_test)
+  
+  daten_sub <- daten_sub[daten_sub$F1_2 %in% valid_groups, ]
+  
+  # Two sample t-Test
+  ttest_result <- t.test(F2_8r4 ~ as.factor(F1_2), data = daten_sub, var.equal = TRUE)
+  print(ttest_result)
+  
+  # Cohen's d
+  cohen_result <- cohens_d(daten_sub, F2_8r4 ~ F1_2, var.equal = TRUE)
+  cat("\nCohen's d:\n")
+  print(cohen_result)
+  
+  cat("\n----------------------------------------\n")
+}
+
+```
+
+
+## Descriptive Statistics Type of Health Insurance / Acceptance
+
+```{r}
+
+# Combine waves
+combined_data <- bind_rows(lapply(names(datensaetze), function(welle) {
+  daten <- datensaetze[[welle]]
+  daten$Wave <- welle
+  daten$F1_8 <- as.character(daten$F1_8)
+  daten
+}))
+
+# Order
+insurance_levels <- c("1", "2", "3", "4")
+
+desc_stats_ins <- combined_data %>%
+  group_by(F1_8, Wave) %>%
+  summarise(
+    M = round(mean(F2_8r4, na.rm = TRUE), 2),
+    SD = round(sd(F2_8r4, na.rm = TRUE), 2),
+    n = sum(!is.na(F2_8r4)),
+    .groups = "drop"
+  ) %>%
+  arrange(factor(F1_8, levels = insurance_levels), Wave)
+
+print(desc_stats_ins)
+
+```
+
+## ANOVA Type of Health Insurance / Acceptance
+
+```{r}
+
+# Loop through the datasets in the list
+for (welle in names(datensaetze)) {
+  cat("Classical ANOVA for wave", welle, "\n")
+  daten <- datensaetze[[welle]]
+  
+  # Levene's test for homogeneity of variances
+  levene_test <- leveneTest(F2_8r4 ~ as.factor(F1_8), data = daten)
+  print(levene_test)
+  
+  # Check group sizes and valid observations
+  valid_groups <- aggregate(F2_8r4 ~ F1_8, data = daten, function(x) sum(!is.na(x)))
+  valid_groups <- valid_groups[valid_groups$F2_8r4 >= 5, "F1_8"]
+  
+  # Filter data for groups with at least two valid observations
+  daten <- daten[daten$F1_2 %in% valid_groups, ]
+  
+  # Perform Classical ANOVA
+  anova_result <- aov(F2_8r4 ~ as.factor(F1_8), data = daten)
+  summary_result <- summary(anova_result)
+  print(summary_result)
+  
+  bonferroni_result <- PostHocTest(anova_result, method = "bonf")
+  print(bonferroni_result)
+  
+  p_value <- summary_result[[1]]$`Pr(>F)`[1]
+  
+  if (p_value < 0.05) {
+    cat("\nThe ANOVA is significant (p =", p_value, ").\n")
+    cat("Tukey HSD test will be performed:\n")
+    
+    # Perform Tukey HSD test
+    tukey_result <- TukeyHSD(anova_result)
+    print(tukey_result)
+    
+    # Extract pairwise comparisons and confidence intervals
+    pairwise_comparisons <- as.data.frame(tukey_result$`as.factor(F1_8)`)
+    pairwise_comparisons$Comparison <- rownames(pairwise_comparisons)
+    colnames(pairwise_comparisons) <- c("Mean_Diff", "Lower_CI", "Upper_CI", "p_value", "Comparison")
+    
+    # Output pairwise comparisons with confidence intervals
+    cat("\nPairwise comparisons with confidence intervals:\n")
+    print(pairwise_comparisons)
+    
+  } else {
+    cat("\nThe ANOVA is not significant (p =", p_value, ").\n")
+    cat("Tukey HSD test will be skipped.\n")
+  }
+  
+  cat("\n----------------------------------------\n")
+}
+```
+```
+
