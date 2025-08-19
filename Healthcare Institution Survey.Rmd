@@ -41,7 +41,7 @@ library(stringr)
 ## Read datasets and make a copy
 
 ```{r}
-setwd("/Users/lesliebernhardt/Library/CloudStorage/OneDrive-gematik.de/Masterarbeit/Datensätze")
+
 lei1 <- readxl::read_excel("LEI_QER4.xlsx", col_names = TRUE)
 lei <- lei1
 
